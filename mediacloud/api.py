@@ -374,3 +374,39 @@ class WriteableMediaCloud(MediaCloud):
             custom_tags.append( '{},{}:{}'.format( tag.story_sentences_id, tag.tag_set_name, tag.tag_name ) )
         params['sentence_tag'] = custom_tags
         return self._queryForJson( self.V2_API_URL+'sentences/put_tags', params, 'PUT')
+
+class CustomMediaCloud(WriteableMediaCloud):
+
+    def download(self, downloads_id):
+        return self._queryForJson(self.V2_API_URL+'downloads/single/'+str(downloads_id))[0]
+
+    def _query(self, url, params={}, http_method='GET'):
+        # Almost identical to parent, but adds the full requests reqponse on error
+        self._logger.debug("query "+http_method+" to "+url+" with "+str(params))
+        if not isinstance(params, dict):
+            raise Exception('Queries must include a dict of parameters')
+        if 'key' not in params:
+            params['key'] = self._auth_token
+        if http_method is 'GET':
+            try:
+                r = requests.get(url, params=params, headers={ 'Accept': 'application/json'} )
+            except Exception as e:
+                self._logger.error('Failed to load url '+url+' because '+str(e))
+                raise Exception("Error - failed to fetch data from mediacloud.org server")
+        elif http_method is 'PUT':
+            try:
+                r = requests.put( url, params=params, headers={ 'Accept': 'application/json'} )
+            except Exception as e:
+                self._logger.error('Failed to load url '+url+' because '+str(e))
+                raise Exception("Error - failed to fetch data from mediacloud.org server")
+        else:
+            raise Exception('Error - unsupported HTTP method '+str(http_method))
+        if r.status_code is not 200:
+            self._logger.error('Bad HTTP response to '+r.url +' : '+str(r.status_code)  + ' ' +  str( r.reason) )
+            self._logger.error('\t' + r.content )
+            msg = 'Error - got a HTTP status code of %s with the message "%s"' % (
+                str(r.status_code)
+                , str(r.reason)
+            )
+            raise mediacloud.error.MCException(msg, r.status_code, r)
+        return r

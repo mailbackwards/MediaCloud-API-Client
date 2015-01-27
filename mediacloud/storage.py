@@ -171,3 +171,18 @@ class MongoStoryDatabase(StoryDatabase):
 
     def storyCount(self):
         return self._db['stories'].count()
+
+class CustomStoryDatabase(MongoStoryDatabase):
+
+    def getStories(self, query):
+        return self._db.stories.find( query )
+
+    def getLinkData(self, query):
+        return self._db.stories.aggregate([
+                {'$match': query},
+                {'$group': {'_id': '$guid',
+                            'num_inlinks': {'$sum': '$story_links.num_inlinks'}, 
+                            'num_links': {'$sum': '$story_links.num_links'}}
+                            },
+                {'$sort': {'_id': 1}}
+            ])
