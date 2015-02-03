@@ -13,10 +13,24 @@ def content_nodes(elem, node_types=None):
 def is_valid_weblink(attr):
 	return attr and not attr.startswith('mailto:')
 
+def is_inlink(target_url, src_urls):
+	"""Checks the target_url domain against all possible src_urls, and returns true if there are any domain matches."""
+	if not isinstance(src_urls, list):
+		src_urls = [src_urls]
+	if target_url.startswith('http') or target_url.startswith('//'):
+		target_url_domain = get_domain(target_url)
+		source_url_domains = map(lambda u: get_domain(u), src_urls)
+		if not any(target_url_domain == d for d in source_url_domains):
+			return False
+	return True
+
 def get_domain(url):
 	return tldextract.extract(url).domain
 
 class LinkExtractor:
+	"""
+	Extract metadata about all the links in a news article.
+	"""
 
 	def __init__(self, url, html=None, source_url=u''):
 		article = Article(url, language='en', keep_article_html=True)
@@ -24,6 +38,19 @@ class LinkExtractor:
 		article.parse()
 		self.extractor = article
 		self.source_url = source_url
+
+	def strip_args(self, url):
+	    """ Accepts URL as a string and strips arguments, avoiding flags """
+	    FLAGS = ['on.nytimes.com/public/overview', 'query.nytimes.com']
+	    
+	    if not any(flag in url.lower() for flag in FLAGS):
+	        for i in range(len(url)):
+	            if url[i] == "?" or url[i] == "#":
+	                url_str = url[:i]
+	                if url_str.endswith('/all/'):
+	                    url_str = url_str[:-4]
+	                return url_str
+	    return url
 
 	def article_soup(self):
 		soup = BeautifulSoup(self.extractor.article_html)
@@ -37,27 +64,17 @@ class LinkExtractor:
 			all_nodes = [article_soup]
 		for i, n in enumerate(all_nodes):
 			for a in n.find_all('a', href=is_valid_weblink):
+				href = self.strip_args(a['href'])
 				links.append({
-					'href': a['href'],
+					'href': href,
 					'anchor': a.get_text(),
-					'inlink': self.is_inlink(a['href']),
+					'inlink': is_inlink(href, [self.extractor.url, self.extractor.canonical_link, self.source_url]),
 					'para': '%s/%s' % (i+1, len(all_nodes)),
 					'_raw_attrs': a.attrs
 				})
-		
 		data = {
 			'num_links': len(links),
 			'num_inlinks': len(filter(lambda l: l['inlink'] == True, links)),
 			'links': links
 		}
 		return data
-
-	def is_inlink(self, url):
-		if url.startswith('http') or url.startswith('//'):
-			target_url_domain = get_domain(url)
-			# Try the article urls and source url
-			source_urls = [self.extractor.url, self.extractor.canonical_link, self.source_url]
-			source_url_domains = map(lambda u: get_domain(u), source_urls)
-			if not any(target_url_domain == d for d in source_url_domains):
-				return False
-		return True

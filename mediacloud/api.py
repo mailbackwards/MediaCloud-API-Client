@@ -380,6 +380,18 @@ class CustomMediaCloud(WriteableMediaCloud):
     def download(self, downloads_id):
         return self._queryForJson(self.V2_API_URL+'downloads/single/'+str(downloads_id))[0]
 
+    def downloadList(self, stories_id=None, last_downloads_id=0, rows=20):
+        params = {
+            'last_downloads_id': last_downloads_id,
+            'rows': rows,
+        }
+        if stories_id is not None:
+            params['stories_id'] = stories_id
+        return self._queryForJson(self.V2_API_URL+'downloads/list', params)
+
+    def downloadText(self, download_texts_id):
+        return self._queryForJson(self.V2_API_URL+'download_texts/single/'+str(download_texts_id))[0]
+
     def _query(self, url, params={}, http_method='GET'):
         # Almost identical to parent, but adds the full requests reqponse on error
         self._logger.debug("query "+http_method+" to "+url+" with "+str(params))
@@ -408,5 +420,7 @@ class CustomMediaCloud(WriteableMediaCloud):
                 str(r.status_code)
                 , str(r.reason)
             )
-            raise mediacloud.error.MCException(msg, r.status_code, r)
+            raise mediacloud.error.CustomMCException(msg, r.status_code, r)
         return r
+
+
