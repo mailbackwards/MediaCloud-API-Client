@@ -24,12 +24,29 @@ def is_inlink(target_url, src_urls):
 			return False
 	return True
 
+def strip_args(url):
+    """ Accepts URL as a string and strips arguments, avoiding flags """
+    FLAGS = ['on.nytimes.com/public/overview', 'query.nytimes.com']
+    
+    if not any(flag in url.lower() for flag in FLAGS):
+        for i in range(len(url)):
+            if url[i] == "?" or url[i] == "#":
+                url_str = url[:i]
+                if url_str.endswith('/all/'):
+                    url_str = url_str[:-4]
+                return url_str
+    return url
+
 def get_domain(url):
 	return tldextract.extract(url).domain
 
 class LinkExtractor:
 	"""
 	Extract metadata about all the links in a news article.
+
+	:param url: URL of article (can be none)
+	:param html: html of article (if provided, it won't use the URL param)
+	:param source_url: url of the article's publication, for inlink checking
 	"""
 
 	def __init__(self, url, html=None, source_url=u''):
@@ -38,19 +55,6 @@ class LinkExtractor:
 		article.parse()
 		self.extractor = article
 		self.source_url = source_url
-
-	def strip_args(self, url):
-	    """ Accepts URL as a string and strips arguments, avoiding flags """
-	    FLAGS = ['on.nytimes.com/public/overview', 'query.nytimes.com']
-	    
-	    if not any(flag in url.lower() for flag in FLAGS):
-	        for i in range(len(url)):
-	            if url[i] == "?" or url[i] == "#":
-	                url_str = url[:i]
-	                if url_str.endswith('/all/'):
-	                    url_str = url_str[:-4]
-	                return url_str
-	    return url
 
 	def article_soup(self):
 		soup = BeautifulSoup(self.extractor.article_html)
@@ -62,19 +66,20 @@ class LinkExtractor:
 		all_nodes = content_nodes(article_soup)
 		if not all_nodes:
 			all_nodes = [article_soup]
+		wordcount = 0
 		for i, n in enumerate(all_nodes):
+			wordcount += len(n.text.split())
 			for a in n.find_all('a', href=is_valid_weblink):
-				href = self.strip_args(a['href'])
 				links.append({
-					'href': href,
+					'href': strip_args(a['href']),
 					'anchor': a.get_text(),
-					'inlink': is_inlink(href, [self.extractor.url, self.extractor.canonical_link, self.source_url]),
-					'para': '%s/%s' % (i+1, len(all_nodes)),
+					'inlink': is_inlink(a['href'], [self.extractor.url, self.extractor.canonical_link, self.source_url]),
+					'para': i+1,
 					'_raw_attrs': a.attrs
 				})
 		data = {
-			'num_links': len(links),
-			'num_inlinks': len(filter(lambda l: l['inlink'] == True, links)),
-			'links': links
+			'story_links': links,
+			'wordcount': wordcount,
+			'grafcount': len(all_nodes)
 		}
 		return data
