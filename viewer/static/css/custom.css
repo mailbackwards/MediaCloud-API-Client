@@ -1,0 +1,15 @@
+body {
+	background-color: #CCCCCC;
+}
+.inlink {
+	background-color: #00FFFF;
+}
+.outlink {
+	background-color: #FF0000;
+}
+.topic {
+	opacity: 0.7;
+}
+.btn-primary {
+	margin: 10px 0px 10px 0px;
+}

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+    <title>Time travel(l)er</title>
+
+    <!-- Bootstrap -->
+    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/custom.css') }}" rel="stylesheet">
+
+    <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
+    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+    <!--[if lt IE 9]>
+      <script src="https://oss.maxcdn.com/html5shiv/3.7.2/html5shiv.min.js"></script>
+      <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="container">
+      <h1>Time travel(l)er</h1>
+
+      <div class="row">
+        <div class="col-sm-4">
+          <div class="form">
+            <input type="text" class="form-control" id="url" placeholder="Enter URL here">
+            <button type="button" class='btn btn-primary'>Submit</button>
+          </div>
+        </div>
+        <div class="col-sm-4">
+          <span><strong>Select:</strong></span>
+          <div class="radio">
+            <label><input type="radio" name="radio-opt" value="explore" checked>Explore links</label>
+          </div>
+          <div class="radio">
+            <label><input type="radio" name="radio-opt" value="community">Community</label>
+          </div>
+          <div class="radio">
+            <label><input type="radio" name="radio-opt" value="cocitation">Cocitation</label>
+          </div>
+        </div>
+        <div class="col-sm-4">
+          <span><strong>Sort:</strong></span>
+          <div class="radio">
+            <label><input type="radio" name="radio-sort-opt" value="date" checked>By date</label>
+          </div>
+          <div class="radio">
+            <label><input type="radio" name="radio-sort-opt" value="size">By size</label>
+          </div>
+          <div class="radio">
+            <label><input type="radio" name="radio-sort-opt" value="relevancy">By relevancy</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+          <div class="col-sm-3">
+            <ul class="list-group">
+            </ul>
+          </div><!-- /.col-sm-4 -->
+          <div class="col-sm-3">
+            <ul class="list-group">
+            </ul>
+          </div><!-- /.col-sm-4 -->
+          <div class="col-sm-3">
+            <ul class="list-group">
+            </ul>
+          </div><!-- /.col-sm-4 -->
+          <div class="col-sm-3">
+            <ul class="list-group">
+            </ul>
+          </div><!-- /.col-sm-4 -->
+      </div>
+    </div>
+
+    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+    <script src="{{ url_for('static', filename='js/jquery.min.js') }}" type="text/javascript"></script>
+    <!-- Include all compiled plugins (below), or include individual files as needed -->
+    <script src="{{ url_for('static', filename='js/bootstrap.min.js') }}" type="text/javascript"></script>
+    <script src="{{ url_for('static', filename='js/spin.min.js') }}" type="text/javascript"></script>
+    <script src="{{ url_for('static', filename='js/custom.js') }}" type="text/javascript"></script>
+
+  </body>
+</html>
