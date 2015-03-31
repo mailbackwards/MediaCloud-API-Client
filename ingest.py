@@ -1,16 +1,21 @@
 import csv
+import re
 from datetime import date
 from linker.ingester import MediaCloudIngester
-from linker.querier import CsvQuerier
+from linker.querier import CustomStoryDatabase, CsvQuerier
 
-START = date(2014,2,1)
-END = date(2014,2,28)
-MEDIA_ID = 1751
+DB_NAME = 'mclinkstest'
+START = date(2015,1,1)
+END = date(2015,5,1)
+#MEDIA_ID = 1751
+MEDIA_ID = 104828
 MEDIA_SET_ID = None
-LAST_ID = 185118385
+LAST_ID = 352446818
+#LAST_ID = 167885185
+
 
 def ingest():
-    m = MediaCloudIngester(db_name='mclinkstest')
+    m = MediaCloudIngester(db_name=DB_NAME)
     m.time_series_ingest(START,END,
         media_id=MEDIA_ID,
         media_set_id=MEDIA_SET_ID,
@@ -20,8 +25,11 @@ def _writeToCsv(rows, outfile='out/outfile.csv'):
     if not rows:
         return None
     with open(outfile, 'w+') as f:
-        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
-        writer.writeheader()
+        if isinstance(rows[0], dict):
+            writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+            writer.writeheader()
+        else:
+            writer = csv.writer(f)
         for row in rows:
             try:
                 writer.writerow(row)
@@ -42,21 +50,28 @@ def make_stories_csv(indata):
     rows = CsvQuerier(db_name=indata['db_name']).getNodeRows(query)
     _writeToCsv(rows, 'out/%s_stories.csv' % indata['label'])
 
-# def make_links_csv(indata):
-#     """Output a network graph spreadsheet with nodes and edges."""
-#     query = {'media_id': indata['media_id'], 'guid': {'$regex': '('+'|'.join(indata['patterns'])+')'}}
-#     rows = CsvQuerier().getEdgeRows(query)
-#     _writeToCsv(rows, 'out/%s_links.csv' % indata['label'])
+def make_links_csv(indata):
+    """Output a network graph spreadsheet with nodes and edges."""
+    query = {'media_id': indata['media_id'], 'guid': {'$regex': '('+'|'.join(indata['patterns'])+')'}}
+    rows = CsvQuerier(db_name=indata['db_name']).getEdgeRows(query)
+    _writeToCsv(rows, 'out/%s_links.csv' % indata['label'])
+
+def removeMatchingStories(patterns):
+    c = CustomStoryDatabase('mclinksblogs')
+    query = {'$or': [{'guid': {'$in': [re.compile(pattern) for pattern in patterns]}},
+                     {'url': {'$in': [re.compile(pattern) for pattern in patterns]}}]}
+    c._db.stories.remove(query)
 
 TOP25_DATA = {
     'label': 'top25',
     'db_name': 'mclinksmass',
     #'media_id': 1,
     #'patterns': ('.+',)
-    'patterns': ('.+', 'nytimes\.', 'sfgate\.', 'cnet\.', 'nypost\.', 'bostonherald', 'time\(/|\.)',
+    'patterns': ('.+', 'nytimes\.', 'sfgate\.', 'cnet\.', 'nypost\.', 'bostonherald', 
         'cbsnews\.', 'foxnews\.', 'latimes\.', 'nbcnews\.', 'nydailynews\.', 'reuters\.', 
         'guardian\.', 'washingtonpost\.', 'cnn\.', 'usatoday\.', 'telegraph\.', 'bbc\.', 'dailymail\.',
         'examiner\.', 'forbes\.'),
+    #'time\(/|\.)',
     'use_guid': False
 }
 

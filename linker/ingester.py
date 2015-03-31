@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import re
+import hashlib
 from mediacloud.api import CustomMediaCloud
 from mediacloud.error import CustomMCException
 from .extractor import LinkExtractor
@@ -111,6 +112,10 @@ class MediaCloudIngester:
 			last_id = stories[-1]['processed_stories_id']
 
 	def time_series_ingest(self, start_date, end_date, media_id=None, media_set_id=None, last_id=0):
+		"""
+		Continuously queries MediaCloud for all stories matching the given
+		start_date, end_date, media_id and media_set_id.
+		"""
 		start_datestr = start_date.strftime('%Y-%m-%d')
 		end_datestr = end_date.strftime('%Y-%m-%d')
 		solr_filter = '+publish_date:[{start}T00:00:00Z TO {end}T23:59:59Z]'.format(
@@ -120,3 +125,26 @@ class MediaCloudIngester:
 		if media_set_id is not None:
 			solr_filter += ' AND +media_sets_id:{media_set}'.format(media_set=media_set_id)
 		self.ingest_all(solr_filter=solr_filter, last_id=last_id)
+
+class MediaCloudSpider:
+
+	def __init__(self, db_name=None):
+		db_name = db_name or DB_NAME
+		self.db = CustomStoryDatabase(db_name)
+		self.hrefs = set()
+
+	def spider_from(self, url):
+		print 'On url %s, current hrefs %s' % (url, self.hrefs)
+		if url in self.hrefs:
+			return
+		self.hrefs |= set([url])
+		data = LinkExtractor(url).extract()
+		data.update({
+			'url': url,
+			'guid': url,
+			'stories_id': hashlib.md5(url).hexdigest()
+		})
+		story = self.db.addStory(data)
+		for link in data['story_links']:
+			if link['inlink'] is True:
+				self.spider_from(link['href'])

@@ -1,27 +1,132 @@
+import csv
+import itertools
+import networkx as nx
 from mediacloud.storage import MongoStoryDatabase
 
 class CustomStoryDatabase(MongoStoryDatabase):
 
     def getStories(self, query):
+        """
+        Just gets stories based on a query, fun.
+        """
         return self._db.stories.find( query )
 
-    def getEdges(self, query):
-        stories = self._db.stories.find( query )
-        nodes = []
-        edges = []
-        while True:
-            try:
-                f = stories.next()
-            except StopIteration:
-                break
-            for link in f['story_links']:
-                if link['inlink']:
-                    if f['guid'] not in nodes:
-                        nodes.append({'id': f['guid'], 'label': f['guid']})
-                    if link['href'] not in nodes:
-                        nodes.append({'id': link['href'], 'label': link['href']})
-                    edges.append({'id': '%s - %s' % (f['guid'], link['href']), 'source': f['guid'], 'target': link['href']})
-        return {'nodes': nodes, 'edges': edges}
+    def getEdges(self, query=None):
+        """
+        Gets all the edges (i.e. links) in the graph scoped by the given query.
+
+        :param query: Mongo query.
+        :return: Iterable of tuples, e.g. (`http://source_url.com`, `http://target_url.com`)
+        """
+        if query is None:
+            query = {}
+        stories = self.getStories(query)
+        graph = self.buildGraph(stories)
+        return graph.edges()
+
+    def buildGraph(self, stories, inlinks_only=False):
+        """
+        Builds a networkx graph from a list of stories.
+
+        :param stories: iterable of Media Cloud stories.
+        :param inlinks_only: set to True to prevent links from other domains from being part of the graph.
+        """
+        graph = nx.DiGraph()
+        for story in stories:
+            node = story['guid']
+            graph.add_node(node, story)
+            for link in story['story_links']:
+                if inlinks_only is True and link['inlink'] is False:
+                    continue
+                linknode = link['href']
+                graph.add_node(linknode)
+                graph.add_edge(node, linknode, link)
+        return graph
+
+    def getCocitations(self, url, query={}):
+        """
+        Gets all of the cocitations of a URL.
+        Cocitations are all of the successors of a URL's predecessors.
+
+        :param url: The URL in the database.
+        :param query: Limit the graph of the query.
+        """
+        stories = self.getStories(query)
+        graph = self.buildGraph(stories, inlinks_only=True)
+        cocites = set()
+        for predecessor in graph.predecessors_iter(url):
+            cocites |= set(graph.successors(predecessor))
+        cocites -= set([url])
+        return [graph.node[c] or {'href': c} for c in cocites]
+
+    def getSpiderCommunity(self, url, query={}, spider=0):
+        """
+        Builds a list of links around a given URL and ranks them by in_degree.
+
+        :param url: The URL in the database.
+        :param query: Limit the query in the graph.
+        :param spider: How many levels to spider out from the original URL.
+        :return: List of links, ordered by relevancy.
+        """
+        subgraph = self.getSpiderSubgraph(url, query, spider)
+        stories = sorted(subgraph.in_degree_iter(subgraph.nodes()), key=lambda s: s[1], reverse=True)
+        return [subgraph.node[s[0]] or {'href': s[0]} for s in stories if s[0] != url]
+
+    def getSpiderSubgraph(self, url, query={}, spider=1):
+        """
+        Builds a graph by spidering out from a given URL and including all articles.
+
+        :param url: The URL in the database to build a subgraph around.
+        :param query: Limit the scope of the graph.
+        :param spider: How many levels to spider out from the original URL.
+        :return: networkx graph with the spidered links.
+        """
+        stories = self.getStories(query)
+        graph = self.buildGraph(stories, inlinks_only=True)
+        urls = [url]
+        all_results = set()
+        for i in range(spider):
+            new_results = set()
+            for url in urls:
+                neighbors = set([n for n in nx.all_neighbors(graph, url)])
+                new_results |= (neighbors - all_results)
+                all_results |= neighbors
+            urls = list(new_results)
+        return graph.subgraph(all_results)
+
+    def getNeighbors(self, url, query={}):
+        """
+        Gets all the details about the links to and from a given URL.
+
+        :param url: The URL in the database.
+        :param query: Limit the scope of the graph.
+        :return: List of links with detailed metadata.
+        """
+        stories = self.getStories(query)
+        graph = self.buildGraph(stories, inlinks_only=True)
+        if url not in graph:
+            return []
+
+        res = []
+
+        chain = itertools.chain.from_iterable([
+            graph.in_edges_iter(url,data=True),
+            graph.out_edges_iter(url,data=True)])
+
+        for src, target, data in chain:
+            if src == url:
+                # It is an out edge
+                data['is_in_edge'] = False
+                target_node = target
+            else:
+                # It is an in edge
+                data['is_in_edge'] = True
+                target_node = src
+            details = graph.node[target_node] if target_node in graph else {}
+            data.update(details)
+            data['href'] = target_node
+            res.append(data)
+        return res
 
     # def mapR(self, query):
     #     from bson.code import Code
@@ -36,46 +141,14 @@ class CustomStoryDatabase(MongoStoryDatabase):
     #     result = self._db.stories.map_reduce(m, r, 'mclinks')
     #     return result
 
-    def getNeighbors(self, url, spider=0, linksin=True, linksout=True):
-        results = []
-        urls = [url]
-        for i in range(spider+1):
-            match_query = {'$or': []}
-            if linksout:
-                match_query['$or'].extend([
-                    {'guid': {'$in': urls}},
-                    {'url': {'$in': urls}}
-                ])
-            if linksin:
-                match_query['$or'].append(
-                    {'story_links.href': {'$in': urls}}
-                )
-            # Look for these url as both a source and a target (href)
-            response = self._db.stories.aggregate([{'$match': match_query}])['result']
-            urls = []
-            for item in response:
-                spider_level = i
-                links = item['story_links']
-                inward_links = filter(lambda l: url == l['href'], links)
-                if inward_links:
-                    # It's a link pointing in
-                    spider_level += 1
-                    for link in inward_links:
-                        link['is_target'] = True
-                        link['spider_level'] = spider_level
-                        link['href'] = item['guid']
-                        results.append(link)
-                        links.remove(link)
-                for link in links:
-                    link['is_target'] = False
-                    link['spider_level'] = spider_level
-                    results.append(link)
-                    urls.append(link['href'])
-        return results
+    def getStoryLinkData(self, query={}, with_metadata=True):
+        """
+        Get high-level data about the linking behavior of stories in a given query.
 
-    def getStoryLinkData(self, query=None, with_metadata=True):
-        if query is None:
-            query = {}
+        :param query: Limit the data analysis to the stories matching the given query.
+        :param with_metadata: Get meta information about the links along with the stories.
+        :return: List or dict, depending on whether `with_metadata` is enabled.
+        """
         stories = self._db.stories.aggregate([
                 {'$match': query},
                 {'$project': {
@@ -136,6 +209,8 @@ class CustomStoryDatabase(MongoStoryDatabase):
         }
         return data
 
+
+
 class CsvQuerier(object):
 
     def __init__(self, db_name='mclinks', media_id=None, topic_urls=None, patterns=None, use_guid=True, **kwargs):
@@ -146,30 +221,25 @@ class CsvQuerier(object):
         self.use_guid = use_guid
 
     def getNodeRows(self, query):
-        y = self.db.getStories(query)
-        rows = []
-        while True:
-            try:
-                s = y.next()
-            except StopIteration:
-                break
-            res = {
-                '_id': s['_id'],
-                'guid': s['guid'],
-                'url': s['url'],
-                'stories_id': s['stories_id'],
-                'media_id': s['media_id'],
-                'title': s['title'].encode('ascii', 'ignore'),
-                'pubdate': s['publish_date'],
-                'num_links': len(s['story_links']),
-                'num_inlinks': len(filter(lambda l: l['inlink'] is True, s['story_links'])),
-                'hrefs': ', '.join([i['href'] for i in s['story_links']])
-            }
-            rows.append(res)
-        return rows
+        return [{
+            '_id': s['_id'],
+            'guid': s['guid'],
+            'url': s['url'],
+            'stories_id': s['stories_id'],
+            'media_id': s['media_id'],
+            'title': s['title'].encode('ascii', 'ignore'),
+            'pubdate': s['publish_date'],
+            'num_links': len(s['story_links']),
+            'num_inlinks': len([l for l in s['story_links'] if l['inlink'] is True]),
+            'hrefs': ', '.join([i['href'] for i in s['story_links']])
+        } for s in self.db.getStories(query)]
 
-    def getEdgeRows(self, query):
-        rows = self.db.getEdges(query)['edges']
+    def getEdgeRows(self, query=None):
+        edges = self.db.getEdges(query)
+        rows = [{
+            'source': edge[0],
+            'target': edge[1]
+        } for edge in edges]
         return rows
 
     def getPatternData(self):
@@ -211,3 +281,31 @@ class CsvQuerier(object):
         res['numTopicLinks'] = topics_count
         res['pctTopicLinks'] = float(topics_count) / total_count if total_count != 0 else 0.0
         return res
+
+    def getDictFromCsv(self, infile):
+        """
+        """
+        with open(infile, 'r') as f:
+            reader = csv.reader(f)
+            headers = reader.next()
+            nodes = []
+            for row in reader:
+                node = {}
+                for index, item in enumerate(row):
+                    node[headers[index]] = item
+                nodes.append(node)
+        return nodes
+
+    def customizeStoryData(self, infile='out/spider_links_mod.csv', id_field='id'):
+        """
+        """
+        nodes = self.getDictFromCsv(infile)
+        node_dict = { node[id_field]: node for node in nodes }
+        stories = self.db.getStories({})
+        s = []
+        for story in stories:
+            if story['guid'] in node_dict:
+                copy = story.copy()
+                copy.update(node_dict[story['guid']])
+                s.append(copy)
+        return s
