@@ -41,11 +41,12 @@ def hello_json():
     c = CustomStoryDatabase(DB_NAME)
 
     if mode == 'explore':
-        neighbors = c.getNeighbors(url)#, {'media_id': 104828})
+        neighbors = c.getNeighbors(url)
     elif mode == 'community':
-        neighbors = c.getSpiderCommunity(url, spider=3)# {'media_id': 104828}, spider=3)
+        spider = int(request.args.get('spider',3))
+        neighbors = c.getSpiderCommunity(url, spider=spider)
     elif mode == 'cocitation':
-        neighbors = c.getCocitations(url)#, {'media_id': 104828})
+        neighbors = c.getCocitations(url)
 
     for i, neighbor in enumerate(neighbors):
         neighbors[i].pop('_id', None)

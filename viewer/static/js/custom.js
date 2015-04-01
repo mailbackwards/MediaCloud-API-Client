@@ -36,9 +36,10 @@ function call_ajax_primary(event) {
 	var spinner = new Spinner().spin(nextCol);
 	var radioMode = $('input[name=radio-opt]:checked').val();
 	var radioSortMode = $('input[name=radio-sort-opt]:checked').val();
+	var spiderLevel = $('.spiderSelect option:selected').val();
     $.ajax({
           type: "GET",
-          url: "http://localhost:5000/hello.json?url="+url+"&mode="+radioMode+"&sortMode="+radioSortMode,
+          url: "http://localhost:5000/hello.json?url="+url+"&mode="+radioMode+"&sortMode="+radioSortMode+"&spider="+spiderLevel,
           success: function(data) {
           	spinner.stop();
           	populate_boxes(data['results']);
