@@ -60,18 +60,19 @@ class LinkExtractor:
 		soup = BeautifulSoup(self.extractor.article_html)
 		return soup
 
-	def extract(self):
+	def extract(self, get_meta=False):
 		links = []
 		article_soup = self.article_soup()
-		all_nodes = content_nodes(article_soup)
-		if not all_nodes:
-			all_nodes = [article_soup]
+		all_nodes = content_nodes(article_soup) or [article_soup]
 		wordcount = 0
 		for i, n in enumerate(all_nodes):
 			wordcount += len(n.text.split())
 			for a in n.find_all('a', href=is_valid_weblink):
+				link = strip_args(a['href'])
+				if link.startswith('//'):
+					link = 'http:' + link
 				links.append({
-					'href': strip_args(a['href']),
+					'href': link,
 					'anchor': a.get_text(),
 					'inlink': is_inlink(a['href'], [self.extractor.url, self.extractor.canonical_link, self.source_url]),
 					'para': i+1,
@@ -82,4 +83,15 @@ class LinkExtractor:
 			'wordcount': wordcount,
 			'grafcount': len(all_nodes)
 		}
+		if get_meta:
+			try:
+				date = self.extractor.publish_date.strftime('%Y-%m-%d %H:%M:%S')
+			except AttributeError:
+				date = ''
+			data.update({
+				'title': self.extractor.title,
+				'publish_date': date,
+				'authors': self.extractor.authors,
+				'url': self.extractor.url
+				})
 		return data

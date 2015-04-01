@@ -1,10 +1,11 @@
+import sys
 import csv
 import re
 from datetime import date
-from linker.ingester import MediaCloudIngester
+from linker.ingester import MediaCloudIngester, LinkSpider
 from linker.querier import CustomStoryDatabase, CsvQuerier
 
-DB_NAME = 'mclinkstest'
+DB_NAME = 'mclinksspider'
 START = date(2015,1,1)
 END = date(2015,5,1)
 #MEDIA_ID = 1751
@@ -20,6 +21,9 @@ def ingest():
         media_id=MEDIA_ID,
         media_set_id=MEDIA_SET_ID,
         last_id=LAST_ID)
+
+def spider(url):
+    return LinkSpider(DB_NAME).spider_from(url)
 
 def _writeToCsv(rows, outfile='out/outfile.csv'):
     if not rows:
@@ -186,4 +190,4 @@ GUARDIAN_DATA = {
 }
 
 if __name__ == "__main__":
-    ingest()
+    spider(sys.argv[1])

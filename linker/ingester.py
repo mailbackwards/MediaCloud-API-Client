@@ -126,25 +126,30 @@ class MediaCloudIngester:
 			solr_filter += ' AND +media_sets_id:{media_set}'.format(media_set=media_set_id)
 		self.ingest_all(solr_filter=solr_filter, last_id=last_id)
 
-class MediaCloudSpider:
+class LinkSpider(object):
 
 	def __init__(self, db_name=None):
 		db_name = db_name or DB_NAME
 		self.db = CustomStoryDatabase(db_name)
 		self.hrefs = set()
+		self.queue = set()
 
-	def spider_from(self, url):
-		print 'On url %s, current hrefs %s' % (url, self.hrefs)
-		if url in self.hrefs:
-			return
-		self.hrefs |= set([url])
-		data = LinkExtractor(url).extract()
-		data.update({
-			'url': url,
-			'guid': url,
-			'stories_id': hashlib.md5(url).hexdigest()
-		})
-		story = self.db.addStory(data)
-		for link in data['story_links']:
-			if link['inlink'] is True:
-				self.spider_from(link['href'])
+	def spider_from(self, url, limit=20000):
+		print '%d links crawled, %d links in queue. url %s' % (len(self.hrefs), len(self.queue), url)
+		if url not in self.hrefs:
+			self.hrefs |= set([url])
+			data = LinkExtractor(url).extract(get_meta=True)
+			data.update({
+				'guid': url,
+				'stories_id': hashlib.md5(url).hexdigest()
+			})
+			story = self.db.addStory(data)
+			limit -= 1
+			# Add the inlinks to a queue so we get the closest links first
+			self.queue |= set([link['href'] for link in data['story_links']
+							  if link['inlink'] is True and link['href'] not in self.hrefs and not any((subl in link['href'] for subl in ('topics.nytimes', 'movies.nytimes')))])
+		else:
+			print '--> Already crawled'
+		if self.queue:
+			return self.spider_from(self.queue.pop(), limit=limit)
+		return len(self.hrefs)
